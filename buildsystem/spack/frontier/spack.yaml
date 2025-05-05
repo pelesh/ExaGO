@@ -1,0 +1,178 @@
+spack:
+  specs:
+  - exago@develop%rocmcc@6.3.1 amdgpu_target=gfx90a
+    ^coinhsl%gcc@12.3
+    ^openblas%gcc@12.3
+    ^petsc%rocmcc@6.3.1 target=zen3
+  view: false
+  concretizer:
+    unify: when_possible
+    reuse: false
+  compilers:
+  - compiler:
+      spec: rocmcc@6.3.1
+      paths:
+        cc: /opt/rocm-6.3.1/llvm/bin/amdclang
+        cxx: /opt/rocm-6.3.1/llvm/bin/amdclang++
+        f77: /opt/rocm-6.3.1/llvm/bin/amdflang
+        fc: /opt/rocm-6.3.1/llvm/bin/amdflang
+      flags: {}
+      operating_system: sles15
+      target: x86_64
+      modules: []
+      environment: {}
+      extra_rpaths: []
+  - compiler:
+      spec: gcc@12.3
+      paths:
+        cc: /opt/cray/pe/gcc-native/12/bin/gcc
+        cxx: /opt/cray/pe/gcc-native/12/bin/g++
+        f77: /opt/cray/pe/gcc-native/12/bin/gfortran
+        fc: /opt/cray/pe/gcc-native/12/bin/gfortran
+      flags: {}
+      operating_system: sles15
+      target: x86_64
+      modules: []
+      environment: {}
+      extra_rpaths: []
+  packages:
+    all:
+      compiler:
+      - rocmcc@6.3.1
+      providers:
+        blas: [openblas]
+        mpi: [cray-mpich]
+      target: [zen3]
+    exago:
+      require: ~python+raja+hiop+rocm+ipopt
+    hiop:
+      require: +sparse+mpi+raja+rocm~ginkgo+kron
+      version: [develop]
+    ipopt:
+      require: '@3.12.10~metis+coinhsl~mumps'
+    # Pin OpenBlas version for consistent test results.
+    openblas:
+      require: '@0.3.20'
+    umpire:
+      require: ~examples
+      version: [6.0.0]
+    raja:
+      require: ~examples~exercises
+      version: [0.14.0]
+    coinhsl:
+      require: '@2019.05.21'
+    magma:
+      require: '@2.8.0'
+    petsc:
+      require: ~hypre~superlu-dist~hdf5~metis
+    cray-mpich:
+      buildable: false
+      externals:
+      - spec: cray-mpich@8.1.28 %rocmcc@6.3.1
+        prefix: /opt/cray/pe/mpich/8.1.28/ofi/gnu/12.3
+        modules:
+        - PrgEnv-gnu-amd
+        - cpe/23.12
+        - cray-mpich/8.1.28
+        - amd-mixed/6.3.1
+        - rocm/6.3.1
+        - gcc-native/12.3
+        - craype-accel-amd-gfx90a
+        - craype-x86-trento
+        - libfabric
+    cmake:
+      buildable: false
+      externals:
+      - spec: cmake@3.27.9
+        modules:
+        - cmake/3.27.9
+    gmake:
+      buildable: false
+      externals:
+      - spec: gmake@4.4.1
+        modules:
+        - gmake/4.4.1
+    libfabric:
+      buildable: false
+      externals:
+      - spec: libfabric@1.20.1
+        modules:
+        - libfabric/1.20.1
+    metis:
+      buildable: false
+      externals:
+      - spec: metis@5.1.0
+        modules:
+        - metis/5.1.0
+    python:
+      externals:
+      - spec: python@3.11.5
+        modules:
+        - cray-python/3.11.5
+      buildable: false
+    hip:
+      buildable: false
+      externals:
+      - spec: hip@6.3.1
+        prefix: /opt/rocm-6.3.1
+    hipblas:
+      buildable: false
+      externals:
+      - spec: hipblas@6.3.1
+        prefix: /opt/rocm-6.3.1/
+    hipcub:
+      buildable: false
+      externals:
+      - spec: hipcub@6.3.1
+        prefix: /opt/rocm-6.3.1/
+    hipfft:
+      buildable: false
+      externals:
+      - spec: hipfft@6.3.1
+        prefix: /opt/rocm-6.3.1/
+    hiprand:
+      buildable: false
+      externals:
+      - spec: hiprand@6.3.1
+        prefix: /opt/rocm-6.3.1
+    hipsolver:
+      buildable: false
+      externals:
+      - spec: hipsolver@6.3.1
+        prefix: /opt/rocm-6.3.1
+    hipsparse:
+      buildable: false
+      externals:
+      - spec: hipsparse@6.3.1
+        prefix: /opt/rocm-6.3.1/
+    hsa-rocr-dev:
+      buildable: false
+      externals:
+      - spec: hsa-rocr-dev@6.3.1
+        prefix: /opt/rocm-6.3.1/
+    llvm-amdgpu:
+      buildable: false
+      externals:
+      - spec: llvm-amdgpu@6.3.1
+        prefix: /opt/rocm-6.3.1/
+    rocprim:
+      buildable: false
+      externals:
+      - spec: rocprim@6.3.1
+        prefix: /opt/rocm-6.3.1
+    rocm-core:
+      buildable: false
+      externals:
+      - spec: rocm-core@6.3.1
+        prefix: /opt/rocm-6.3.1/
+  config:
+    install_tree:
+      root: $SPACK_INSTALL
+    source_cache: $SPACK_CACHE/source-cache
+    build_cache: $SPACK_CACHE/build-cache
+    misc_cache: $SPACK_CACHE/misc-cache
+    build_stage: $SPACK_CACHE/build-stage
+  modules:
+    default:
+      roots:
+        tcl: $SPACK_INSTALL/$SPACK_MODULES

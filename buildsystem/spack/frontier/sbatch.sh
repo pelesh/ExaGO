@@ -1,11 +1,13 @@
 #!/bin/bash
 
-#BSUB -P csc359
-#BSUB -W 2:00
-#BSUB -nnodes 1
-#BSUB -J exasgd_spack_install
-#BSUB -o spack_install.%J
-#BSUB -e spack_install.%J
+#SBATCH -A ENG145
+#SBATCH -p batch
+#SBATCH -t 100
+#SBATCH -N 1
+#SBATCH -c 32
+#SBATCH -J exasgd_spack_install
+#SBATCH -o spack_install.%J
+#SBATCH -e spack_install.%J
 
 exit() {
   # Clear all trap handlers so this isn't echo'ed multiple times, potentially
@@ -52,7 +54,7 @@ export no_proxy='localhost,127.0.0.0/8,*.ccs.ornl.gov,*.olcf.ornl.gov,*.ncrc.gov
 
 # Assuming that you already have a binary mirror configured
 # TODO - copy over coinhsl tarball beforehand?
-export MY_CLUSTER=summit
+export MY_CLUSTER=frontier
 . buildsystem/spack/load_spack.sh && \
 spack develop --no-clone --path=$(pwd) exago@develop && \
 buildsystem/spack/configure_modules.sh 32
