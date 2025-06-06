@@ -35,7 +35,7 @@ function getCountyNodes(data) {
           countydata.features[j].properties.KVlevels = [...countydata.features[j].properties.KVlevels, ...data.features[i].properties.KVlevels];
           for (var k = 0; k < nbus; k++) {
             var bus = subst.bus[k];
-            countydata.features[j].properties.Pd += bus.PD;
+            countydata.features[j].properties.Pd += bus.PDloss;
             countydata.features[j].properties.Vm_avg += bus.VM;
             nbuscounty++;
 
@@ -90,19 +90,28 @@ function ExtractFlowData(data) {
         lat: feature.geometry.coordinates[1]
       })
     } else if (feature.geometry.type === "LineString") {
+	var RATE_A;
+	if(feature.properties.RATE_A == 0) {
+	    RATE_A = 10000;
+	} else {
+	    RATE_A = feature.properties.RATE_A;
+	}
+	var loading = Math.abs(feature.properties.PF / RATE_A)*100;
       if (feature.properties.PF > 0) {
         const [origin, dest] = feature.properties.NAME.split(' -- ')
         flows.push({
           origin: origin,
           dest: dest,
-          count: feature.properties.KV 
+          count: feature.properties.KV,
+	  loading: loading
         })
       } else {
         const [dest, origin] = feature.properties.NAME.split(' -- ')
         flows.push({
           origin: origin,
           dest: dest,
-          count: feature.properties.KV 
+          count: feature.properties.KV,
+	  loading: loading
         })
       }
 
@@ -114,7 +123,7 @@ function ExtractFlowData(data) {
   const uniq = new Set(flows.map(e => JSON.stringify(e)));
   const res = Array.from(uniq).map(e => JSON.parse(e));
   return ({
-    locations: locations, flows: res
+      locations: locations, flows: res, maxloading: 120
   })
 
 }
@@ -235,8 +244,8 @@ function getLoad(data) {
       var Qd = 0.0;
       for (j = 0; j < nbus; j++) {
         var bus = subst.bus[j];
-        Pd += bus.PD;
-        Qd += bus.QD;
+        Pd += bus.PDloss;
+        Qd += bus.QDloss;
       }
       if (Pd > 0) {
         if (Pd <= minPd) minPd = Pd;
@@ -261,4 +270,72 @@ function getContours() {
   return contours;
 }
 
-export { getCountyNodes, ExtractFirstTimeSlice, ExtractFlowData, getBarNet, getPoints, getGeneration, getLoad, getContours };
+// Filter features with geometry type "Point" and properties area = area_num
+function getArea(data,area_num) {
+    var filteredFeatures = data.features.filter(feature => 
+	feature.geometry.type === "Point" && feature.properties.area === area_num
+    );
+
+    // Create a new GeoJSON object with filtered features
+    var filteredGeoJSON = {
+	type: "FeatureCollection",
+	features: filteredFeatures
+    };
+
+    var areahull = convex(filteredGeoJSON);
+    if(areahull) {
+	areahull.properties ={name: area_num};
+    }
+
+    return areahull;
+}
+
+function getAreas(sysdata) {
+
+    var areas = [];
+
+    for(var i = 0; i < sysdata.nareas; i++) {
+	var area = getArea(sysdata.geojsondata,sysdata.areas[i]);
+	if(area) {
+	    areas.push(area);
+	}
+    }
+		   
+    return {type:"FeatureCollection", features:areas};
+}
+
+// Filter features with geometry type "Point" and properties zone = zone_num
+function getZone(data,zone_num) {
+    var filteredFeatures = data.features.filter(feature => 
+	feature.geometry.type === "Point" && feature.properties.zone === zone_num
+    );
+
+    // Create a new GeoJSON object with filtered features
+    var filteredGeoJSON = {
+	type: "FeatureCollection",
+	features: filteredFeatures
+    };
+
+    var zonehull = convex(filteredGeoJSON);
+    if(zonehull) {
+	zonehull.properties ={name: zone_num};
+    }
+
+    return zonehull;
+}
+
+function getZones(sysdata) {
+
+    var zones = [];
+
+    for(var i = 0; i < sysdata.nzones; i++) {
+	var zone = getZone(sysdata.geojsondata,sysdata.zones[i]);
+	if(zone) {
+	    zones.push(zone);
+	}
+    }
+		   
+    return {type:"FeatureCollection", features:zones};
+}
+
+export { getCountyNodes, ExtractFirstTimeSlice, ExtractFlowData, getBarNet, getPoints, getGeneration, getLoad, getContours, getAreas, getZones };

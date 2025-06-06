@@ -21,6 +21,8 @@ import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 
+//import nercregions from "data/NERC_Reliability_Coordinators.json"
+
 import {
   Chart as ChartJS,
   RadialLinearScale,
@@ -40,7 +42,7 @@ import { LinearInterpolator, FlyToInterpolator } from 'deck.gl';
 import { HeatmapLayer } from 'deck.gl';
 import { InvertColorsOff, ShopTwoOutlined } from '@mui/icons-material';
 
-import { getCountyNodes, ExtractFirstTimeSlice, ExtractFlowData, getBarNet, getPoints, getGeneration, getLoad, getContours } from "./src/dataprocess";
+import { getCountyNodes, ExtractFirstTimeSlice, ExtractFlowData, getBarNet, getPoints, getGeneration, getLoad, getContours, getAreas, getZones } from "./src/dataprocess";
 import { LineColor, FlowColor, FillColor, fillGenColumnColor, fillGenColumnColorCap, getVoltageFillColor } from "./src/color"
 
 import 'core-js/actual/structured-clone';
@@ -59,11 +61,12 @@ casedata = mod_casedata.get_casedata();
 // Source data GeoJSON
 const geodata = casedata['geojsondata']
 
-
+const style='pos';
 const MAP_STYLE = {
   pos_no_label: 'https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json',
   pos: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  none:''
 };
 
 
@@ -72,8 +75,11 @@ var data = ExtractFirstTimeSlice(geodata);
 const countyloaddata = getCountyNodes(data);
 data = countyloaddata.updatedata;
 
+const areas = getAreas(casedata);
 
-var flowdata = ExtractFlowData(data);
+const zones = getZones(casedata);
+
+const flowdata = ExtractFlowData(data);
 
 const Points = getPoints(data);
 const Voltages = Points.map(d => d.value);
@@ -146,9 +152,15 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
   const [busNameSelectItems, setBusNameSelectItems] = useState([]);
 
   const [busNameItems, setbusNameItems] = useState(data.features
-    .filter(f => f.geometry.type == "Point").map((f) => (f.properties.NAME)));
+						   .filter(f => f.geometry.type == "Point").map((f) => (f.properties.NAME)));
 
+    const [areaNameSelectItems, setAreaNameSelectItems] = useState([]);
 
+    const [areaNameItems, setAreaNameItems] = useState(areas.features.map(f => f.properties.name));
+
+    const [zoneNameSelectItems, setZoneNameSelectItems] = useState([]);
+
+    const [zoneNameItems, setZoneNameItems] = useState(zones.features.map(f => f.properties.name));
 
   const [countyNameSelectItems, setCountyNameSelectItems] = useState([]);
 
@@ -182,7 +194,7 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
 
   const [netfiltervalue, setNetFilterValue] = useState([0, 800]);
 
-  const [flowfiltervalue, setFlowFilterValue] = useState([0, 800]);
+  const [flowfiltervalue, setFlowFilterValue] = useState([0, 120]);
 
   const [loadfiltervalue, setLoadFilterValue] = useState([0, countyloaddata.maxPd]);
 
@@ -213,26 +225,32 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
             lat: feature.geometry.coordinates[1]
           })
         } else if (feature.geometry.type === "LineString" && lineNameSelectItems.includes(feature.properties.NAME)) {
+	    var RATE_A;
+	    if(feature.properties.RATE_A == 0) {
+		RATE_A = 10000;
+	    } else {
+		RATE_A = feature.properties.RATE_A;
+	    }
+	  var loading = Math.abs(feature.properties.PF / RATE_A)*100;
           if (feature.properties.PF > 0) {
             const [origin, dest] = feature.properties.NAME.split(' -- ')
             flows.push({
               origin: origin,
               dest: dest,
-              count: Math.abs(feature.properties.PF)
+	      count: feature.properties.KV,
+	      loading: loading
             })
           } else {
             const [dest, origin] = feature.properties.NAME.split(' -- ')
             flows.push({
               origin: origin,
               dest: dest,
-              count: Math.abs(feature.properties.PF)
+	      count: feature.properties.KV,
+	      loading: loading
             })
           }
-
         }
-
       })
-
     } else if (busNameSelectItems.length > 0) {
 
       data.features.forEach(feature => {
@@ -244,19 +262,29 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
             lat: feature.geometry.coordinates[1]
           })
         } else if (feature.geometry.type === "LineString" && feature.properties.NAME.split(' -- ').some(r => busNameSelectItems.includes(r))) {
+	    var RATE_A;
+	    if(feature.properties.RATE_A == 0) {
+		RATE_A = 10000;
+	    } else {
+		RATE_A = feature.properties.RATE_A;
+	    }
+
+	  var loading = Math.abs(feature.properties.PF / RATE_A)*100;
           if (feature.properties.PF > 0) {
             const [origin, dest] = feature.properties.NAME.split(' -- ')
             flows.push({
               origin: origin,
               dest: dest,
-              count: Math.abs(feature.properties.PF)
+	      count: feature.properties.KV,
+	      loading: loading
             })
           } else {
             const [dest, origin] = feature.properties.NAME.split(' -- ')
             flows.push({
               origin: origin,
               dest: dest,
-              count: Math.abs(feature.properties.PF)
+	      count: feature.properties.KV,
+	      loading: loading
             })
           }
 
@@ -264,12 +292,10 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
 
       })
     }
-    else {
+      else {
       data.features.forEach(feature => {
         if (feature.geometry.type === "Point" && netfiltervalue[0] <= feature.properties.KVlevels[0] &&
-          feature.properties.KVlevels[0] <= netfiltervalue[1] &&
-          flowfiltervalue[0] <= feature.properties.KVlevels[0] &&
-          feature.properties.KVlevels[0] <= flowfiltervalue[1]) {
+          feature.properties.KVlevels[0] <= netfiltervalue[1]) {
           locations.push({
             id: feature.properties.NAME,
             name: feature.properties.NAME,
@@ -277,30 +303,39 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
             lat: feature.geometry.coordinates[1]
           })
         } else if (feature.geometry.type === "LineString" && netfiltervalue[0] <= feature.properties.KV &&
-          feature.properties.KV <= netfiltervalue[1] &&
-          flowfiltervalue[0] <= feature.properties.KV &&
-          feature.properties.KV <= flowfiltervalue[1]) {
-          if (feature.properties.PF > 0) {
-            const [origin, dest] = feature.properties.NAME.split(' -- ')
-            flows.push({
-              origin: origin,
-              dest: dest,
-              count: Math.abs(feature.properties.PF)
-            })
-          } else {
-            const [dest, origin] = feature.properties.NAME.split(' -- ')
-            flows.push({
-              origin: origin,
-              dest: dest,
-              count: Math.abs(feature.properties.PF)
-            })
-          }
+          feature.properties.KV <= netfiltervalue[1]) {
+	    var RATE_A;
+	    if(feature.properties.RATE_A == 0) {
+		RATE_A = 10000;
+	    } else {
+		RATE_A = feature.properties.RATE_A;
+	    }
+	    var loading = Math.abs(feature.properties.PF/RATE_A)*100.0;
 
+	    if(flowfiltervalue[0] <= loading && loading <= flowfiltervalue[1]) {
+		if (feature.properties.PF > 0) {
+		    const [origin, dest] = feature.properties.NAME.split(' -- ')
+		    flows.push({
+			origin: origin,
+			dest: dest,
+			count: feature.properties.KV,
+			loading: loading
+		    })
+		} else {
+		    const [dest, origin] = feature.properties.NAME.split(' -- ')
+		    flows.push({
+			origin: origin,
+			dest: dest,
+			count: feature.properties.KV,
+			loading: loading
+		    })
+		}
+	    }
         }
-
       })
-    }
-    const newflowdata = { locations: locations, flows: flows }
+      }
+      
+      const newflowdata = { locations: locations, flows: flows, maxloading: 120 }
     setFlowData(newflowdata);
   }, [data, netfiltervalue, flowfiltervalue, lineNameSelectItems]);
 
@@ -370,9 +405,10 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
         popup.name = info.object.properties.NAME
         popup.info = "Substation Info"
       } else {
-        var popup = {};
-        popup.name = info.object.properties.NAME
-        popup.info = "Line Info"
+          var popup = {};
+	  var loading = Math.abs(info.object.properties.PF / info.object.properties.RATE_A)*100.0;
+          popup.name = info.object.properties.NAME
+          popup.info = "KV: "+info.object.properties.KV.toFixed(2)+"KV \nLoading: "+loading.toFixed(2)+ "%"; 
       }
       setShowPopup(showPopup => ({ ...showPopup, ...popup }));
     } else if (info.layer.id == "gen-column") {
@@ -407,6 +443,54 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
   
   });
 
+    const zoomToAreaName = useCallback((filterareas,minLng, minLat, maxLng, maxLat) => {
+    var viewport = new WebMercatorViewport(INITIAL_VIEW_STATE);
+
+    const { longitude, latitude, zoom } = viewport.fitBounds([[minLng, minLat], [maxLng, maxLat]]);
+
+    setInitialViewState(viewState => ({
+      ...viewState,
+      latitude: latitude,
+      longitude: longitude,
+      pitch: 50,
+      traansitionInterpolator: transitionFlyToInterpolator,
+      transitionDuration: 5000,
+      zoom: 7.5,
+      onTransitionEnd: activatePopup
+    }))
+
+      var popup = { display: false, name: '', info: '' }; // Will be displayed after transition end only
+      popup.name = "Area " + filterareas.properties.name;
+//      popup.info = "Area: " + info.object.properties.name;
+      setShowPopup(showPopup => ({ ...showPopup, ...popup }));
+    
+    });
+
+    const zoomToZoneName = useCallback((filterzones,minLng, minLat, maxLng, maxLat) => {
+    var viewport = new WebMercatorViewport(INITIAL_VIEW_STATE);
+
+    const { longitude, latitude, zoom } = viewport.fitBounds([[minLng, minLat], [maxLng, maxLat]]);
+
+    setInitialViewState(viewState => ({
+      ...viewState,
+      latitude: latitude,
+      longitude: longitude,
+      pitch: 50,
+      traansitionInterpolator: transitionFlyToInterpolator,
+      transitionDuration: 5000,
+      zoom: 7.5,
+      onTransitionEnd: activatePopup
+    }))
+
+      var popup = { display: false, name: '', info: '' }; // Will be displayed after transition end only
+      popup.name = "Zone " + filterzones.properties.name;
+//      popup.info = "Zone: " + info.object.properties.name;
+      setShowPopup(showPopup => ({ ...showPopup, ...popup }));
+    
+  });
+
+
+
   const zoomToCounty = useCallback((info) => {
     if (!info) return null;
 
@@ -433,7 +517,73 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
 
       var popup = { display: false, name: '', info: '' }; // Will be displayed after transition end only
       popup.name = info.object.properties.NAME;
-      popup.info = "Load: " + info.object.properties.Pd.toFixed(2) + "MW";
+      popup.info = "Load loss: " + info.object.properties.Pd.toFixed(2) + "MW";
+      setShowPopup(showPopup => ({ ...showPopup, ...popup }));
+
+
+    }
+  });
+
+    const zoomToArea = useCallback((info) => {
+    if (!info) return null;
+
+    if (info.layer.id == 'AreaLayer') {
+      var layer = info.layer;
+      var { viewport } = layer.context;
+
+      var cbounds = bbox(info.object);
+      var c1 = [cbounds[0], cbounds[1]];
+      var c2 = [cbounds[2], cbounds[3]];
+      var areabounds = [c1, c2];
+      const { longitude, latitude, zoom } = viewport.fitBounds(areabounds);
+
+      setInitialViewState(viewState => ({
+        ...viewState,
+        latitude: latitude,
+        longitude: longitude,
+        pitch: 50,
+        traansitionInterpolator: transitionFlyToInterpolator,
+        transitionDuration: 5000,
+        zoom: zoom - 0.25,
+        onTransitionEnd: activatePopup
+      }))
+
+      var popup = { display: false, name: '', info: '' }; // Will be displayed after transition end only
+      popup.name = "Area " + info.object.properties.name;
+//      popup.info = "Area: " + info.object.properties.name;
+      setShowPopup(showPopup => ({ ...showPopup, ...popup }));
+
+
+    }
+    });
+
+    const zoomToZone = useCallback((info) => {
+    if (!info) return null;
+
+    if (info.layer.id == 'ZoneLayer') {
+      var layer = info.layer;
+      var { viewport } = layer.context;
+
+      var cbounds = bbox(info.object);
+      var c1 = [cbounds[0], cbounds[1]];
+      var c2 = [cbounds[2], cbounds[3]];
+      var zonebounds = [c1, c2];
+      const { longitude, latitude, zoom } = viewport.fitBounds(zonebounds);
+
+      setInitialViewState(viewState => ({
+        ...viewState,
+        latitude: latitude,
+        longitude: longitude,
+        pitch: 50,
+        traansitionInterpolator: transitionFlyToInterpolator,
+        transitionDuration: 5000,
+        zoom: zoom - 0.25,
+        onTransitionEnd: activatePopup
+      }))
+
+      var popup = { display: false, name: '', info: '' }; // Will be displayed after transition end only
+      popup.name = "Zone " + info.object.properties.name;
+//      popup.info = "Zone: " + info.object.properties.name;
       setShowPopup(showPopup => ({ ...showPopup, ...popup }));
 
 
@@ -464,10 +614,9 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
   const [genlayeractive, setGenLayerActive] = useState(false);
   const [genlayercapactive, setGenLayerCapActive] = useState(false);
   const [voltagelayeractive, setVoltageLayerActive] = useState(false);
-
-
-
-
+  const [zonelayeractive, setZoneLayerActive] = useState(false);
+  const [arealayeractive, setAreaLayerActive] = useState(false);
+    
   const handleUserInput = (inputText) => {
     console.log(`New message incoming! ${inputText}`);
     // Now send the message to GPT and get response 
@@ -554,8 +703,6 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
     toggleMsgLoader(); // close loading 
   }, [ouputMes]);
 
- 
-
   const handleNetLayerChange = (event) => {
     setNetLayerActive(event.target.checked);
     setNetFilterValue([0, 800]);
@@ -563,7 +710,8 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
 
 
   const handleFlowLayerChange = (event) => {
-    setFlowLayerActive(event.target.checked);
+      setFlowLayerActive(event.target.checked);
+      setFlowFilterValue([0, 120]);
   };
 
   const handleLoadLayerChange = (event) => {
@@ -589,6 +737,31 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
       transitionDuration: 2000,
     })))
   };
+
+    const handleAreaLayerChange = (event) => {
+    setAreaLayerActive(event.target.checked);
+//    setVoltageFilterValue([0.89, 1.11]);
+
+    event.target.checked && (setInitialViewState(viewState => ({
+      ...viewState,
+      pitch: 40,
+      traansitionInterpolator: transitionFlyToInterpolator,
+      transitionDuration: 2000,
+    })))
+    };
+
+    const handleZoneLayerChange = (event) => {
+    setZoneLayerActive(event.target.checked);
+//    setVoltageFilterValue([0.89, 1.11]);
+
+    event.target.checked && (setInitialViewState(viewState => ({
+      ...viewState,
+      pitch: 40,
+      traansitionInterpolator: transitionFlyToInterpolator,
+      transitionDuration: 2000,
+    })))
+  };
+
 
   const handleGenLayerChange = (event) => {
     setGenLayerActive(event.target.checked);
@@ -640,8 +813,21 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
           if (netfiltervalue[0] <= KV && KV <= netfiltervalue[1]) return KV;
         }
       } else {
-        /* Line layer */
-        return data.properties.KV;
+	  if(data.geometry.type == 'LineString') { /* Line layer */
+	      /* Uncomment to activate flow-based filtering
+	      var RATE_A;
+	      if(data.properties.RATE_A == 0) {
+		  RATE_A = 10000;
+	      } else {
+		  RATE_A = data.properties.RATE_A;
+	      }
+	      var loading = Math.abs(data.properties.PF / RATE_A)*100;
+	      if(flowfiltervalue[0] <= loading && loading <= flowfiltervalue[1]) {
+		  return data.properties.KV;
+		  }
+	      */
+	      return data.properties.KV;
+	  }
       }
     }
 
@@ -649,7 +835,7 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
   }
 
   function getFlowFilterValue(data) {
-    console.log(data)
+
   }
 
   function getGenFilterValue(data) {
@@ -777,7 +963,7 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
 
       extensions: [new DataFilterExtension({ filtersize: 1 })],
       updateTriggers: {
-        getFilterValue: [netfiltervalue, lineNameSelectItems, busNameSelectItems]
+          getFilterValue: [netfiltervalue, lineNameSelectItems, busNameSelectItems, flowfiltervalue]
       }
     }),
 
@@ -874,6 +1060,59 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
       }
     }),
     */
+
+      
+      new GeoJsonLayer({
+      id: 'AreaLayer',
+      data: areas,
+      pickable: arealayeractive,
+      visible: arealayeractive,
+      stroked: true,
+      filled: true,
+      extruded: true,
+      wireframe: true,
+      lineWidthMinPixels: 1,
+      getPolygon: d => d.geometry.coordinates,
+      //      getElevation: d => d.properties.Pd*5.0,
+      getFillColor: [255, 192, 203],
+      getLineColor: [80, 80, 80],
+      getLineWidth: d => 1,
+      opacity: 0.1,
+      onClick: zoomToArea,
+//      extensions: [new DataFilterExtension({ filtersize: 1 })],
+//      getFilterValue: getLoadFilterValue,
+//      filterRange: loadfiltervalue,
+
+//      updateTriggers: {
+//        getFilterValue: [netfiltervalue, countyNameSelectItems]
+//      }
+    }),
+
+    new GeoJsonLayer({
+      id: 'ZoneLayer',
+      data: zones,
+      pickable: zonelayeractive,
+      visible: zonelayeractive,
+      stroked: true,
+      filled: true,
+      extruded: true,
+      wireframe: true,
+      lineWidthMinPixels: 1,
+      getPolygon: d => d.geometry.coordinates,
+      //      getElevation: d => d.properties.Pd*5.0,
+      getFillColor: [252, 245, 95],
+      getLineColor: [80, 80, 80],
+      getLineWidth: d => 1,
+      opacity: 0.1,
+      onClick: zoomToZone,
+//      extensions: [new DataFilterExtension({ filtersize: 1 })],
+//      getFilterValue: getLoadFilterValue,
+//      filterRange: loadfiltervalue,
+
+//      updateTriggers: {
+//        getFilterValue: [netfiltervalue, countyNameSelectItems]
+//      }
+    }),
 
     new GeoJsonLayer({
       id: 'PolygonLayerload',
@@ -1069,6 +1308,56 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
     }
   }
 
+  const handleAreaMultiselect = (selectItem, metadata) => {
+
+      const selected = areaNameSelectItems.indexOf(metadata.dataItem)
+      console.log(selected);
+    if (selected >= 0) {  //if is selected, remove 
+      const newArray = [...areaNameSelectItems.slice(0, selected), ...areaNameSelectItems.slice(selected + 1)];
+      setAreaNameSelectItems(newArray)
+
+    } else {  //add to array 
+      setAreaNameSelectItems(areaNameSelectItems => ([...areaNameSelectItems, metadata.dataItem]))
+      const filterareas = areas.features.filter(area => area.properties.name === metadata.dataItem)
+      if (filterareas.length > 0) {
+        const longs = filterareas[0].geometry.coordinates[0].map(d => d[0])
+        const lats = filterareas[0].geometry.coordinates[0].map(d => d[1])
+        const minLng = Math.min(...longs)
+        const maxLng = Math.max(...longs)
+        const minLat = Math.min(...lats)
+        const maxLat = Math.max(...lats)
+
+        zoomToAreaName(filterareas[0],minLng, minLat, maxLng, maxLat)
+      }
+    }
+  }
+
+    const handleZoneMultiselect = (selectItem, metadata) => {
+
+      const selected = zoneNameSelectItems.indexOf(metadata.dataItem)
+      console.log(selected);
+    if (selected >= 0) {  //if is selected, remove 
+      const newArray = [...zoneNameSelectItems.slice(0, selected), ...zoneNameSelectItems.slice(selected + 1)];
+      setZoneNameSelectItems(newArray)
+
+    } else {  //add to array 
+      setZoneNameSelectItems(zoneNameSelectItems => ([...zoneNameSelectItems, metadata.dataItem]))
+      const filterzones = zones.features.filter(area => area.properties.name === metadata.dataItem)
+      if (filterzones.length > 0) {
+        const longs = filterzones[0].geometry.coordinates[0].map(d => d[0])
+        const lats = filterzones[0].geometry.coordinates[0].map(d => d[1])
+        const minLng = Math.min(...longs)
+        const maxLng = Math.max(...longs)
+        const minLat = Math.min(...lats)
+        const maxLat = Math.max(...lats)
+
+        zoomToZoneName(filterzones[0],minLng, minLat, maxLng, maxLat)
+      }
+    }
+  }
+
+  
+
   const renderItem = ({
     id,
     name
@@ -1194,7 +1483,7 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
 
 
         <StaticMap reuseMaps
-          mapStyle={mapStyle['pos']}
+          mapStyle={mapStyle[style]}
           preventStyleDiffing={true}
           initialViewState={INITIAL_VIEW_STATE}
         >
@@ -1293,9 +1582,9 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
                       valueLabelDisplay="auto"
                       onChange={handleFlowRangeFilterChange}
                       getAriaValueText={valuetext}
-                      step={100}
+                      step={10}
                       min={0}
-                      max={800}
+		      max={120}
                     >
                     </Slider></div>)
                 }
@@ -1375,7 +1664,7 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
             <AccordionSummary style={{ height: "20px", minHeight: "30px", paddingRight: "40px", paddingLeft: "0px" }}
               expandIcon={<ArrowDropDownIcon />}>
               <Typography>
-                <Checkbox checked={loadlayeractive} style={{ color: "primary" }} onChange={handleLoadLayerChange} />Load
+                <Checkbox checked={loadlayeractive} style={{ color: "primary" }} onChange={handleLoadLayerChange} />Load loss
               </Typography>
             </AccordionSummary>
             <AccordionDetails>
@@ -1438,6 +1727,44 @@ export default function App({ refdata = data, refflowdata = flowdata, ggdata = g
                 /></div>)}
 
 
+              </Typography>
+            </AccordionDetails>
+          </Accordion>
+
+	  <Accordion defaultExpanded={false}>
+            <AccordionSummary style={{ height: "20px", minHeight: "30px", paddingRight: "40px", paddingLeft: "0px" }}
+              expandIcon={<ArrowDropDownIcon />}>
+              <Typography>
+                <Checkbox checked={arealayeractive} style={{ color: "primary" }} onChange={handleAreaLayerChange} />Show Areas
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography component="div">
+                {arealayeractive && (<div style={{ paddingRight: "40px" }}><Multiselect
+                  defaultValue={areaNameSelectItems}
+                  data={areaNameItems}
+                  placeholder={'Search for areas'}
+                  onChange={handleAreaMultiselect}
+                /></div>)}
+              </Typography>
+            </AccordionDetails>
+          </Accordion>
+
+	  <Accordion defaultExpanded={false}>
+            <AccordionSummary style={{ height: "20px", minHeight: "30px", paddingRight: "40px", paddingLeft: "0px" }}
+              expandIcon={<ArrowDropDownIcon />}>
+              <Typography>
+                <Checkbox checked={zonelayeractive} style={{ color: "primary" }} onChange={handleZoneLayerChange} />Show Zones
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Typography component="div">
+                {zonelayeractive && (<div style={{ paddingRight: "40px" }}><Multiselect
+                  defaultValue={zoneNameSelectItems}
+                  data={zoneNameItems}
+                  placeholder={'Search for zones'}
+                  onChange={handleZoneMultiselect}
+                /></div>)}
               </Typography>
             </AccordionDetails>
           </Accordion>

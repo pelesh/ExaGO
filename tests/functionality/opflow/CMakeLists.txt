@@ -130,7 +130,6 @@ if(EXAGO_INSTALL_TESTS)
     -opflow_allow_lineflow_violation
     -opflow_lineflowviolation_penalty
     100
-    -no_optfile
     DEPENDS
     IPOPT
     HIOP
@@ -161,6 +160,22 @@ if(EXAGO_INSTALL_TESTS)
     DEPENDS
     IPOPT
     HIOP
+  )
+
+  exago_add_test(
+    NAME
+    OPFLOW_DCLINE_TEST
+    COMMAND
+    ${RUNCMD}
+    $<TARGET_FILE:app_opflow>
+    -netfile
+    ${CMAKE_SOURCE_DIR}/datafiles/case9/case9_dcline.m
+    -opflow_solver
+    IPOPT
+    -opflow_model
+    POWER_BALANCE_POLAR
+    DEPENDS
+    IPOPT
   )
 
   foreach(fmt "MATPOWER" "CSV" "JSON" "MINIMAL")
