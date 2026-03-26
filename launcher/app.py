@@ -9,6 +9,7 @@ import sys
 import time
 import zipfile
 from pathlib import Path
+import shutil
 
 import streamlit as st
 import yaml
@@ -134,7 +135,8 @@ cfg = st.session_state.cfg
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.image("figs/ornl-logo.png", width='stretch')
+    app_path = os.path.dirname(os.path.realpath(__file__))
+    st.image(app_path + "/figs/ornl-logo.png", width='stretch')
 
     st.title("⚡ ExaGO Launcher")
     st.caption(f"Config: `{config_path}`")
@@ -545,34 +547,16 @@ with tab_viz:
                     st.error(f"Binary not found: `{opflow_bin}`")
                     st.session_state.viz_opflow_output = None
 
-        if st.session_state.get("viz_opflow_output"):
-            st.subheader("Step 3: Copy Output to Viz")
-            # Find the JSON output file
-            output_dir = cfg.get("output_dir", "")
-            json_outputs = list(Path(output_dir).glob("*.json"))
-            if json_outputs:
-                latest_json = max(json_outputs, key=lambda p: p.stat().st_mtime)
-                st.info(f"JSON output: `{latest_json.name}`")
-
-                if st.button("Copy to viz/data & Configure", key="viz_copy_btn"):
-                    # Run geninputfile.py
-                    geninput_script = str(Path(viz_dir) / "geninputfile.py")
-                    try:
-                        result = subprocess.run(
-                            [sys.executable, geninput_script, str(latest_json)],
-                            capture_output=True,
-                            text=True,
-                            cwd=viz_dir,
-                        )
-                        if result.returncode == 0:
-                            st.success("File copied and viz configured")
-                            st.session_state.viz_ready = True
-                        else:
-                            st.error(f"geninputfile.py failed: {result.stderr}")
-                    except FileNotFoundError:
-                        st.error(f"Script not found: `{geninput_script}`")
-            else:
-                st.warning("No JSON output found. Run OPFLOW first.")
+            if st.session_state.get("viz_opflow_output"):
+                # Find the JSON output file
+                output_dir = cfg.get("output_dir", "")
+                json_outputs = list(Path(output_dir).glob("*.json"))
+                if json_outputs:
+                    latest_json = max(json_outputs, key=lambda p: p.stat().st_mtime)
+                    st.info(f"JSON output: `{latest_json.name}`")
+                    shutil.copy(latest_json, viz_dir + "/data")
+                else:
+                    st.warning("No JSON output found. Run OPFLOW first.")
 
     else:
         # Use existing JSON
@@ -582,21 +566,7 @@ with tab_viz:
 
         if st.button("Configure Viz with Selected File", key="viz_existing_btn",
                      disabled=json_path is None):
-            geninput_script = str(Path(viz_dir) / "geninputfile.py")
-            try:
-                result = subprocess.run(
-                    [sys.executable, geninput_script, json_path],
-                    capture_output=True,
-                    text=True,
-                    cwd=viz_dir,
-                )
-                if result.returncode == 0:
-                    st.success("Viz configured successfully")
-                    st.session_state.viz_ready = True
-                else:
-                    st.error(f"geninputfile.py failed: {result.stderr}")
-            except FileNotFoundError:
-                st.error(f"Script not found: `{geninput_script}`")
+            shutil.copy(json_path, viz_dir + "/data")
 
     # Launch viz server
     st.divider()
@@ -607,7 +577,7 @@ with tab_viz:
         if st.button("🚀 Launch Viz Server", key="viz_launch_btn"):
             try:
                 proc = subprocess.Popen(
-                    ["npm", "start"],
+                    ["yarn", "start"],
                     cwd=viz_dir,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -616,7 +586,7 @@ with tab_viz:
                 st.session_state.viz_pid = proc.pid
                 st.success(f"Viz server started (PID: {proc.pid})")
             except FileNotFoundError:
-                st.error("npm not found. Install Node.js to use the visualization server.")
+                st.error("yarn not found. Install Node.js to use the visualization server.")
 
     with col_status:
         if st.session_state.get("viz_pid"):
